@@ -19,7 +19,8 @@ pip install -r requirements.txt
 
 2. Execute o dashboard:
 
-```streamlit run Dashboard.py
+```bash
+streamlit run Dashboard.py
 ```
 
 📊 Funcionalidades
