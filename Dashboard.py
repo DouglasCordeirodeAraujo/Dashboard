@@ -1,98 +1,131 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import altair as alt
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
-from keras.models import Sequential
-from keras.layers import Dense, LSTM
 
-st.set_page_config(page_title="Meu Dashboard", layout="wide")
+# ================================
+# CONFIGURAÇÃO DO STREAMLIT
+# ================================
+st.set_page_config(
+    page_title="Dashboard GPUs",
+    layout="wide"
+)
 
-@st.cache_resource
-def carregar_e_treinar():
-    df = pd.read_csv('NSE-TATAGLOBAL11.csv', sep=',')
+# ================================
+# CARREGAR DATASET
+# ================================
+df = pd.read_csv("gpu_benchmark_60_clean.csv")
 
-    data = df.sort_index(ascending=True)
+# ================================
+# CRIAÇÃO DE MÉTRICAS
+# ================================
+df["fps_medio"] = df["g3d_mark"]
+df["custo_beneficio"] = df["g3d_mark"] / df["price_usd"]
 
-    new_data = pd.DataFrame({'Date': data['Date'], 'Close': data['Close']})
-    new_data.index = pd.to_datetime(new_data['Date'])
-    new_data = new_data.drop(columns=['Date'])
-
-    dataset = new_data.values
-    train = dataset[0:987]
-    valid = dataset[987:]
-
-    scaler = MinMaxScaler(feature_range=(0,1))
-    scaled_data = scaler.fit_transform(dataset)
-
-    x_train, y_train = [], []
-    for i in range(60, len(train)):
-        x_train.append(scaled_data[i-60:i, 0])
-        y_train.append(scaled_data[i, 0])
-
-    x_train, y_train = np.array(x_train), np.array(y_train)
-    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
-
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
-    model.add(LSTM(units=50))
-    model.add(Dense(1))
-    model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(x_train, y_train, epochs=1, batch_size=1, verbose=0)
-
-    # Preparar dados de teste
-    inputs = new_data[len(new_data) - len(valid) - 60:].values
-    inputs = scaler.transform(inputs)
-
-    X_test = []
-    for i in range(60, inputs.shape[0]):
-        X_test.append(inputs[i-60:i, 0])
-
-    X_test = np.array(X_test)
-    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
-
-    closing_price = model.predict(X_test)
-    closing_price = scaler.inverse_transform(closing_price)
-
-    return new_data, closing_price
-
-with st.spinner("Treinando modelo LSTM..."):
-    new_data, closing_price = carregar_e_treinar()
-
-# Exibir resultados
-train = new_data[:987].copy()
-valid = new_data[987:].copy()
-valid['Predictions'] = closing_price
-train['date'] = train.index
-valid['date'] = valid.index
-
-st.title("📈 Meu Primeiro Dashboard com LSTM")
+# ================================
+# TÍTULO E INTRODUÇÃO
+# ================================
+st.title("📊 Dashboard Interativo de Benchmark de GPUs")
 st.write("""
-Abaixo veremos os próximos passos
-""")
-st.write("""
- Previsão de Ações
+Este dashboard apresenta uma análise completa do desempenho e custo-benefício
+das principais GPUs do mercado. Os dados incluem pontuação G3D Mark, preço em dólares
+e consumo energético (TDP).
 """)
 
-stocks_train = alt.Chart(train).mark_line().encode(
-    x='date',
-    y='Close'
-)
-stocks_valid = alt.Chart(valid).mark_line(color="green").encode(
-    x='date',
-    y='Close'
-)
-stocks_pred = alt.Chart(valid).mark_line(color="red").encode(
-    x='date',
-    y='Predictions'
+# ================================
+# MÉTRICAS PRINCIPAIS
+# ================================
+col1, col2, col3 = st.columns(3)
+
+col1.metric("🎮 FPS Médio (G3D Mark)", f"{df['fps_medio'].mean():.2f}")
+col2.metric("💲 Preço Médio (USD)", f"$ {df['price_usd'].mean():.2f}")
+col3.metric("🔥 Melhor Custo-Benefício", df.loc[df["custo_beneficio"].idxmax(), "gpu_name"])
+
+# ================================
+# FILTROS INTERATIVOS
+# ================================
+st.sidebar.header("Filtros")
+
+# Filtro por GPU
+gpu_select = st.sidebar.selectbox(
+    "Selecione uma GPU para análise detalhada:",
+    df["gpu_name"].unique()
 )
 
-st.altair_chart(stocks_train.interactive() + stocks_valid.interactive() + stocks_pred.interactive(), use_container_width=True)
+# Filtro por faixa de preço
+price_min = df["price_usd"].min()
+price_max = df["price_usd"].max()
 
-fig, ax = plt.subplots(figsize=(12,6))
-ax.plot(train['date'], train['Close'], label='Treino')
-ax.plot(valid['date'], valid['Close'], label='Validação')
-ax.plot(valid['date'], valid['Predictions'], label='Previsão LSTM')
-ax.legend()
-st.pyplot(fig)
+price_filter = st.sidebar.slider(
+    "Selecione uma faixa de preço (USD):",
+    min_value=int(price_min),
+    max_value=int(price_max),
+    value=(int(price_min), int(price_max))
+)
+
+# Aplicando filtros
+df_filtered = df[
+    (df["price_usd"] >= price_filter[0]) &
+    (df["price_usd"] <= price_filter[1])
+]
+
+# ================================
+# GRÁFICO 1: DESEMPENHO DAS GPUs
+# ================================
+st.subheader("📈 Desempenho (G3D Mark) por GPU")
+
+fig1, ax1 = plt.subplots(figsize=(12, 5))
+ax1.bar(df_filtered["gpu_name"], df_filtered["g3d_mark"])
+ax1.set_ylabel("Pontuação G3D Mark")
+ax1.set_xticklabels(df_filtered["gpu_name"], rotation=75, ha='right')
+st.pyplot(fig1)
+
+# ================================
+# GRÁFICO 2: PREÇO × DESEMPENHO
+# ================================
+st.subheader("💲 Preço (USD) vs. Desempenho (G3D Mark)")
+
+fig2, ax2 = plt.subplots(figsize=(10, 5))
+ax2.scatter(df_filtered["price_usd"], df_filtered["g3d_mark"])
+ax2.set_xlabel("Preço (USD)")
+ax2.set_ylabel("G3D Mark")
+st.pyplot(fig2)
+
+# ================================
+# GRÁFICO 3: CUSTO-BENEFÍCIO
+# ================================
+st.subheader("🔥 Índice de Custo-Benefício (G3D Mark / USD)")
+
+fig3, ax3 = plt.subplots(figsize=(12, 5))
+ax3.bar(df_filtered["gpu_name"], df_filtered["custo_beneficio"])
+ax3.set_ylabel("Custo-Benefício")
+ax3.set_xticklabels(df_filtered["gpu_name"], rotation=75, ha='right')
+st.pyplot(fig3)
+
+# ================================
+# ANÁLISE DETALHADA (GPU SELECIONADA)
+# ================================
+st.subheader(f"🔍 Análise Detalhada: **{gpu_select}**")
+
+gpu_data = df[df["gpu_name"] == gpu_select].iloc[0]
+
+st.write(f"""
+### 📌 Informações Técnicas
+- **G3D Mark:** {gpu_data['g3d_mark']}
+- **Preço (USD):** ${gpu_data['price_usd']}
+- **TDP (Watts):** {gpu_data['tdp_watts']} W
+- **Custo-Benefício:** {gpu_data['custo_beneficio']:.4f}
+""")
+
+# ================================
+# TABELA COMPLETA
+# ================================
+st.subheader("📄 Dados Brutos")
+st.dataframe(df)
+
+
+st.write("""
+### 📌 Conclusões Gerais
+A análise mostrou que GPUs com maior pontuação G3D Mark tendem a ter preços proporcionais, mas alguns modelos apresentam excelente custo-benefício, como a RTX 3060 Ti e a RX 5700 XT. 
+O gráfico de preço x desempenho revela uma relação quase linear, porém com pontos fora da curva que entregam bom desempenho por menor custo. 
+O filtro interativo permite avaliar facilmente qual GPU se encaixa melhor no orçamento e necessidade de performance.
+""")

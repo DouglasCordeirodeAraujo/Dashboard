@@ -1,11 +1,4 @@
 streamlit
-matplotlib
 pandas
+matplotlib
 numpy
-pillow
-scikit-learn
-keras
-tensorflow
-seaborn
-plotly
-joblib
