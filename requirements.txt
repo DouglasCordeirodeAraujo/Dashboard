@@ -1,9 +1,11 @@
-streamlit>=1.0
 streamlit
 matplotlib
 pandas
 numpy
 pillow
-tensorflow
+scikit-learn
 keras
-
+tensorflow
+seaborn
+plotly
+joblib
