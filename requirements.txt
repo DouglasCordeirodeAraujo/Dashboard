@@ -1,3 +1,4 @@
+streamlit>=1.0
 streamlit
 matplotlib
 pandas
@@ -5,3 +6,4 @@ numpy
 pillow
 tensorflow
 keras
+
